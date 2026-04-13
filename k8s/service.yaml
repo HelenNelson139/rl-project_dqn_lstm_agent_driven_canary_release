@@ -1,0 +1,40 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: canary-ai-agent
+  labels:
+    app: canary-ai-agent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: canary-ai-agent
+  template:
+    metadata:
+      labels:
+        app: canary-ai-agent
+    spec:
+      containers:
+      - name: ai-agent
+        image: canary-ai-service:v1 # Tên image bạn đã build
+        ports:
+        - containerPort: 8000
+        resources:
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: canary-ai-agent-svc
+spec:
+  selector:
+    app: canary-ai-agent
+  ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 8000
