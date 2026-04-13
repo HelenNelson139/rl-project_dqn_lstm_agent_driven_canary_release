@@ -1,0 +1,40 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: my-app-release
+spec:
+  replicas: 5
+  strategy:
+    canary:
+      # Analysis chạy song song với quá trình tăng traffic
+      analysis:
+        templates:
+        - templateName: ai-dqn-decision
+        args:
+        - name: rollout-name
+          value: "my-app-v2"
+        - name: current-weight
+          valueFrom:
+            fieldRef:
+              fieldPath: status.canary.weight
+      steps:
+      - setWeight: 10
+      - pause: {duration: 1m} # Chờ 1 phút để Agent thu thập đủ metrics
+      - setWeight: 30
+      - pause: {duration: 2m}
+      - setWeight: 60
+      - pause: {duration: 2m}
+      - setWeight: 100
+  selector:
+    matchLabels:
+      app: my-app
+  template:
+    metadata:
+      labels:
+        app: my-app
+    spec:
+      containers:
+      - name: my-app
+        image: my-app-image:v2.0.0 # Phiên bản mới bạn muốn release
+        ports:
+        - containerPort: 8080

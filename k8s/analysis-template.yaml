@@ -1,0 +1,27 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: ai-dqn-decision
+spec:
+  args:
+  - name: rollout-name
+  - name: current-weight
+  metrics:
+  - name: ai-judgment
+    interval: 30s # Hỏi AI mỗi 30 giây
+    provider:
+      webhook:
+        url: "http://canary-ai-agent-svc/predict"
+        method: POST
+        headers:
+        - key: "Content-Type"
+          value: "application/json"
+        jsonPayload:
+          # Cấu trúc JSON này phải khớp với InferenceRequest trong FastAPI
+          history: [] # Ở thực tế, bạn sẽ dùng Prometheus để fill dữ liệu ở đây
+          app_info:
+            name: "{{args.rollout-name}}"
+            weight: "{{args.current-weight}}"
+    # Phân tích kết quả trả về từ FastAPI
+    successCondition: "result.decision == 'Successful'"
+    failureCondition: "result.decision == 'Rollback'"
