@@ -8,7 +8,7 @@ spec:
   - name: current-weight
   metrics:
   - name: ai-judgment
-    interval: 30s # Hỏi AI mỗi 30 giây
+    interval: 30s # Tần suất truy vấn AI Agent
     provider:
       webhook:
         url: "http://canary-ai-agent-svc/predict"
@@ -17,11 +17,12 @@ spec:
         - key: "Content-Type"
           value: "application/json"
         jsonPayload:
-          # Cấu trúc JSON này phải khớp với InferenceRequest trong FastAPI
-          history: [] # Ở thực tế, bạn sẽ dùng Prometheus để fill dữ liệu ở đây
+          history: [] # Cần tích hợp Prometheus client vào FastAPI để tự điền dữ liệu này [cite: 10, 48]
           app_info:
             name: "{{args.rollout-name}}"
             weight: "{{args.current-weight}}"
-    # Phân tích kết quả trả về từ FastAPI
+    # Thành công: Argo tiến tới bước (step) tiếp theo trong Rollout [cite: 2, 25]
     successCondition: "result.decision == 'Successful'"
+    # Thất bại: Argo lập tức kích hoạt Rollback về phiên bản Stable [cite: 2, 28]
     failureCondition: "result.decision == 'Rollback'"
+    # Lưu ý: Nếu result.decision là "Running", Argo sẽ đợi và kiểm tra lại sau 30 giây
