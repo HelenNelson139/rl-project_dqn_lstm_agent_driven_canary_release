@@ -8,6 +8,7 @@ on:
       - '.github/workflows/**'
       - 'core/**'
       - 'deploy/**'
+      - 'my-app/**'
       - 'models/**'
       - 'k8s/**'
 
@@ -49,6 +50,16 @@ jobs:
             ghcr.io/${{ github.repository }}/canary-ai-service:latest
             ghcr.io/${{ github.repository }}/canary-ai-service:${{ steps.vars.outputs.sha_short }}
 
+      - name: Build and push my-app
+        uses: docker/build-push-action@v5
+        with:
+          context: my-app
+          file: my-app/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/my-app:latest
+            ghcr.io/${{ github.repository }}/my-app:${{ steps.vars.outputs.sha_short }}
+
   update-gitops:
     needs: build-and-push
     runs-on: ubuntu-latest
@@ -62,11 +73,17 @@ jobs:
         run: |
           # Dùng sed để cập nhật tag image trong file service.yaml theo format GHCR mới
           sed -i "s|image: .*canary-ai-service:.*|image: ghcr.io/${{ github.repository }}/canary-ai-service:${{ needs.build-and-push.outputs.image_tag }}|g" k8s/service.yaml
+          # Cập nhật image cho Argo Rollout của ứng dụng my-app
+          sed -i "s|image: .*my-app:.*|image: ghcr.io/${{ github.repository }}/my-app:${{ needs.build-and-push.outputs.image_tag }}|g" k8s/rollout.yaml
 
       - name: Commit and Push changes
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/service.yaml
-          git commit -m "Update AI Agent image to ${{ needs.build-and-push.outputs.image_tag }} [skip ci]"
+          git add k8s/service.yaml k8s/rollout.yaml k8s/my-app-routing.yaml k8s/analysis-template.yaml
+          if git diff --cached --quiet; then
+            echo "No manifest changes to commit"
+            exit 0
+          fi
+          git commit -m "Update AI Agent/my-app images to ${{ needs.build-and-push.outputs.image_tag }} [skip ci]"
           git push
