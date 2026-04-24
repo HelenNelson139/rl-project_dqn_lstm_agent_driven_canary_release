@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
       - name: my-app
-        image: ghcr.io/thuanthentran/dqn-lstm-agent-driven-canary-release/my-app:283f14b
+        image: ghcr.io/thuanthentran/dqn-lstm-agent-driven-canary-release/my-app:db47a07
         env:
         - name: APP_SCENARIO
           value: "error_bomb"
