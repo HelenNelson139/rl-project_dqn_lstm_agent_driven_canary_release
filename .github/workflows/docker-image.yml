@@ -1,4 +1,4 @@
-name: AI Ops CI/CD Pipeline (using GHCR)
+name: CI Build and Push Images (GHCR)
 
 on:
   workflow_dispatch:
@@ -10,19 +10,14 @@ on:
       - 'deploy/**'
       - 'my-app/**'
       - 'models/**'
-      - 'k8s/**'
 
-# Thiết lập quyền tối thiểu cho GITHUB_TOKEN để đảm bảo bảo mật
 permissions:
-  contents: write # Cần để commit thay đổi vào k8s/service.yaml
-  packages: write  # Cần để push image lên GitHub Container Registry
+  contents: read
+  packages: write
 
 jobs:
   build-and-push:
-    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.vars.outputs.sha_short }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -60,31 +55,3 @@ jobs:
           tags: |
             ghcr.io/${{ github.repository }}/my-app:latest
             ghcr.io/${{ github.repository }}/my-app:${{ steps.vars.outputs.sha_short }}
-
-  update-gitops:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        # Ở đây chúng ta vẫn dùng GITHUB_TOKEN tự động, không cần GITOPS_PAT nữa 
-        # vì chúng ta đã set quyền contents: write ở trên.
-
-      - name: Update Image Tag in K8s Manifest
-        run: |
-          # Dùng sed để cập nhật tag image trong file service.yaml theo format GHCR mới
-          sed -i "s|image: .*canary-ai-service:.*|image: ghcr.io/${{ github.repository }}/canary-ai-service:${{ needs.build-and-push.outputs.image_tag }}|g" k8s/service.yaml
-          # Cập nhật image cho Argo Rollout của ứng dụng my-app
-          sed -i "s|image: .*my-app:.*|image: ghcr.io/${{ github.repository }}/my-app:${{ needs.build-and-push.outputs.image_tag }}|g" k8s/rollout.yaml
-
-      - name: Commit and Push changes
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add k8s/service.yaml k8s/rollout.yaml
-          if git diff --cached --quiet; then
-            echo "No manifest changes to commit"
-            exit 0
-          fi
-          git commit -m "Update AI Agent/my-app images to ${{ needs.build-and-push.outputs.image_tag }} [skip ci]"
-          git push

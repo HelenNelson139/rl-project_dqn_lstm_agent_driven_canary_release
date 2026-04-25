@@ -10,7 +10,7 @@ spec:
   source:
     repoURL: https://github.com/thuanthentran/dqn-lstm-agent-driven-canary-release.git
     targetRevision: main
-    path: k8s
+    path: gitops/app/manifests
   destination:
     server: https://kubernetes.default.svc
     namespace: default
@@ -20,3 +20,10 @@ spec:
       selfHeal: true
     syncOptions:
     - CreateNamespace=true
+    # Retry policy cho hết hạn image cleanup
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
