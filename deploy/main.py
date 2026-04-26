@@ -181,7 +181,6 @@ def _collect_metric_snapshot(values: List[float]) -> dict:
     return {
         "count": len(values),
         "series": normalized,
-        "last": normalized[-1] if normalized else 0.0,
     }
 
 
@@ -285,7 +284,6 @@ def _build_history_from_prometheus(app_info: AppInfo, current_weight: float):
             ]
         )
     return history, {
-        "weight": weight,
         "e_canary": e_canary_snapshot,
         "e_stable": e_stable_snapshot,
         "l_canary": l_canary_snapshot,
