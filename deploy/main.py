@@ -1,6 +1,6 @@
 import os
 import time
-from typing import List
+from typing import List, Tuple
 import logging
 
 import httpx
@@ -163,7 +163,13 @@ def _normalize_series(values: List[float], length: int, default: float = 0.0) ->
     return pad + values
 
 
-def _build_history_from_prometheus(app_info: AppInfo) -> List[List[float]]:
+def _latest_value(values: List[float], default: float = 0.0) -> float:
+    if not values:
+        return default
+    return float(values[-1])
+
+
+def _build_history_from_prometheus(app_info: AppInfo) -> Tuple[List[List[float]], bool, float]:
     build_started_at = time.perf_counter()
     end_ts = int(time.time())
     start_ts = end_ts - PROM_QUERY_WINDOW_SECONDS
@@ -210,6 +216,18 @@ def _build_history_from_prometheus(app_info: AppInfo) -> List[List[float]]:
         end_ts,
         PROM_QUERY_STEP,
     )
+    canary_rps = _prom_query_range(
+        f"sum(rate(http_requests_total{{namespace=\"{ns}\",service=\"{canary_svc}\"}}[1m]))",
+        start_ts,
+        end_ts,
+        PROM_QUERY_STEP,
+    )
+    stable_rps = _prom_query_range(
+        f"sum(rate(http_requests_total{{namespace=\"{ns}\",service=\"{stable_svc}\"}}[1m]))",
+        start_ts,
+        end_ts,
+        PROM_QUERY_STEP,
+    )
     cpu = _prom_query_range(
         (
             "avg(rate(container_cpu_usage_seconds_total{"
@@ -243,15 +261,39 @@ def _build_history_from_prometheus(app_info: AppInfo) -> List[List[float]]:
     e_stable = _normalize_series(e_stable, SEQ_LENGTH)
     l_canary = _normalize_series(l_canary, SEQ_LENGTH)
     l_stable = _normalize_series(l_stable, SEQ_LENGTH)
+    canary_rps = _normalize_series(canary_rps, SEQ_LENGTH)
+    stable_rps = _normalize_series(stable_rps, SEQ_LENGTH)
     cpu = _normalize_series(cpu, SEQ_LENGTH)
     mem = _normalize_series(mem, SEQ_LENGTH)
     rps = _normalize_series(rps, SEQ_LENGTH)
+
+    latest_canary_rps = _latest_value(canary_rps)
+    latest_stable_rps = _latest_value(stable_rps)
+    latest_total_rps = latest_canary_rps + latest_stable_rps
+    observed_weight = float(app_info.weight)
+    if latest_total_rps > 0.0:
+        observed_weight = (latest_canary_rps / latest_total_rps) * 100.0
+
+    data_complete = all(
+        series
+        for series in (
+            e_canary,
+            e_stable,
+            l_canary,
+            l_stable,
+            canary_rps,
+            stable_rps,
+            cpu,
+            mem,
+            rps,
+        )
+    )
 
     history = []
     for i in range(SEQ_LENGTH):
         history.append(
             [
-                float(app_info.weight),
+                observed_weight,
                 e_canary[i],
                 e_stable[i],
                 l_canary[i],
@@ -263,11 +305,13 @@ def _build_history_from_prometheus(app_info: AppInfo) -> List[List[float]]:
         )
 
     logger.info(
-        "history_build_success app=%s ns=%s samples=%d duration_ms=%.1f latest_snapshot={weight:%.2f,e_canary:%.4f,e_stable:%.4f,l_canary:%.4f,l_stable:%.4f,cpu:%.4f,mem:%.2f,rps_k:%.4f}",
+        "history_build_success app=%s ns=%s samples=%d duration_ms=%.1f data_complete=%s latest_snapshot={reported_weight:%.2f,observed_weight:%.2f,e_canary:%.4f,e_stable:%.4f,l_canary:%.4f,l_stable:%.4f,cpu:%.4f,mem:%.2f,rps_k:%.4f}",
         app_info.name,
         app_info.namespace,
         len(history),
         (time.perf_counter() - build_started_at) * 1000.0,
+        data_complete,
+        float(app_info.weight),
         history[-1][0],
         history[-1][1],
         history[-1][2],
@@ -277,7 +321,7 @@ def _build_history_from_prometheus(app_info: AppInfo) -> List[List[float]]:
         history[-1][6],
         history[-1][7],
     )
-    return history
+    return history, data_complete, observed_weight
 
 
 def _action_to_traffic_signal(action: int, current_weight: float):
@@ -298,11 +342,12 @@ def _action_to_traffic_signal(action: int, current_weight: float):
 @app.post("/predict")
 async def predict(request: InferenceRequest):
     started_at = time.perf_counter()
+    reported_weight = float(request.app_info.weight)
     logger.info(
-        "predict_request_received app=%s ns=%s current_weight=%.2f canary_service=%s stable_service=%s",
+        "predict_request_received app=%s ns=%s reported_weight=%.2f canary_service=%s stable_service=%s",
         request.app_info.name,
         request.app_info.namespace,
-        request.app_info.weight,
+        reported_weight,
         request.app_info.canary_service,
         request.app_info.stable_service,
     )
@@ -312,13 +357,32 @@ async def predict(request: InferenceRequest):
         raise HTTPException(status_code=503, detail="Model is not ready")
 
     try:
-        data = _build_history_from_prometheus(request.app_info)
+        data, data_complete, observed_weight = _build_history_from_prometheus(request.app_info)
     except httpx.HTTPError as exc:
         logger.exception("predict_prometheus_query_failed app=%s error=%s", request.app_info.name, exc)
         raise HTTPException(status_code=502, detail=f"Cannot query Prometheus: {exc}")
     except Exception as exc:
         logger.exception("predict_build_history_failed app=%s error=%s", request.app_info.name, exc)
         raise HTTPException(status_code=500, detail=f"Failed to build history: {exc}")
+
+    if not data_complete:
+        latency_ms = (time.perf_counter() - started_at) * 1000.0
+        logger.warning(
+            "predict_insufficient_metrics app=%s ns=%s reported_weight=%.2f observed_weight=%.2f decision=Running latency_ms=%.1f",
+            request.app_info.name,
+            request.app_info.namespace,
+            reported_weight,
+            observed_weight,
+            latency_ms,
+        )
+        return {
+            "action_id": -1,
+            "decision": "Running",
+            "confidence": 0.0,
+            "traffic_signal": "hold",
+            "suggested_weight": observed_weight,
+            "latency_ms": latency_ms,
+        }
     
     input_tensor = torch.FloatTensor([data]).to(DEVICE)
     logger.info("predict_input_tensor_ready shape=%s device=%s", tuple(input_tensor.shape), DEVICE)
@@ -345,18 +409,18 @@ async def predict(request: InferenceRequest):
     decision = action_mapping.get(action, "Running")
     confidence = float(torch.softmax(q_values, dim=1).max())
 
-    current_weight = float(request.app_info.weight)
-    traffic_signal, suggested_weight = _action_to_traffic_signal(action, current_weight)
+    traffic_signal, suggested_weight = _action_to_traffic_signal(action, observed_weight)
     latency_ms = (time.perf_counter() - started_at) * 1000.0
 
     logger.info(
         (
-            "predict app=%s ns=%s current_weight=%.2f action=%d "
+            "predict app=%s ns=%s reported_weight=%.2f observed_weight=%.2f action=%d "
             "signal=%s suggested_weight=%.2f decision=%s confidence=%.4f latency_ms=%.1f"
         ),
         request.app_info.name,
         request.app_info.namespace,
-        current_weight,
+        reported_weight,
+        observed_weight,
         action,
         traffic_signal,
         suggested_weight,
