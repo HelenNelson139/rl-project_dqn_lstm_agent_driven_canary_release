@@ -69,7 +69,7 @@ except Exception as e:
 # --- 3. ĐỊNH NGHĨA DỮ LIỆU ---
 class AppInfo(BaseModel):
     name: str
-    weight: float
+    weight: float = 0.0
     namespace: str = "default"
     canary_service: str = "my-app-canary"
     stable_service: str = "my-app-stable"
@@ -78,7 +78,13 @@ class InferenceRequest(BaseModel):
     app_info: AppInfo
 
 
-def _prom_query_range(query: str, start_ts: int, end_ts: int, step: str) -> List[float]:
+def _prom_query_range(
+    query: str,
+    start_ts: int,
+    end_ts: int,
+    step: str,
+    empty_as_zero: bool = False,
+) -> List[float]:
     params = {
         "query": query,
         "start": start_ts,
@@ -117,6 +123,9 @@ def _prom_query_range(query: str, start_ts: int, end_ts: int, step: str) -> List
 
     result = payload.get("data", {}).get("result", [])
     if not result:
+        if empty_as_zero:
+            logger.info("prom_query_empty_result_as_zero query=%s", query)
+            return [0.0]
         logger.warning("prom_query_empty_result query=%s", query)
         return []
 
@@ -186,6 +195,7 @@ def _build_history_from_prometheus(app_info: AppInfo) -> Tuple[List[List[float]]
         start_ts,
         end_ts,
         PROM_QUERY_STEP,
+        empty_as_zero=True,
     )
     e_stable = _prom_query_range(
         (
@@ -195,6 +205,7 @@ def _build_history_from_prometheus(app_info: AppInfo) -> Tuple[List[List[float]]
         start_ts,
         end_ts,
         PROM_QUERY_STEP,
+        empty_as_zero=True,
     )
     l_canary = _prom_query_range(
         (
@@ -257,6 +268,20 @@ def _build_history_from_prometheus(app_info: AppInfo) -> Tuple[List[List[float]]
         PROM_QUERY_STEP,
     )
 
+    # Required live signals for safe inference. Error-rate queries can legitimately be empty when there are no 5xx.
+    data_complete = all(
+        series
+        for series in (
+            l_canary,
+            l_stable,
+            canary_rps,
+            stable_rps,
+            cpu,
+            mem,
+            rps,
+        )
+    )
+
     e_canary = _normalize_series(e_canary, SEQ_LENGTH)
     e_stable = _normalize_series(e_stable, SEQ_LENGTH)
     l_canary = _normalize_series(l_canary, SEQ_LENGTH)
@@ -273,21 +298,6 @@ def _build_history_from_prometheus(app_info: AppInfo) -> Tuple[List[List[float]]
     observed_weight = float(app_info.weight)
     if latest_total_rps > 0.0:
         observed_weight = (latest_canary_rps / latest_total_rps) * 100.0
-
-    data_complete = all(
-        series
-        for series in (
-            e_canary,
-            e_stable,
-            l_canary,
-            l_stable,
-            canary_rps,
-            stable_rps,
-            cpu,
-            mem,
-            rps,
-        )
-    )
 
     history = []
     for i in range(SEQ_LENGTH):
@@ -342,12 +352,12 @@ def _action_to_traffic_signal(action: int, current_weight: float):
 @app.post("/predict")
 async def predict(request: InferenceRequest):
     started_at = time.perf_counter()
-    reported_weight = float(request.app_info.weight)
+    incoming_weight = float(request.app_info.weight)
     logger.info(
-        "predict_request_received app=%s ns=%s reported_weight=%.2f canary_service=%s stable_service=%s",
+        "predict_request_received app=%s ns=%s incoming_weight=%.2f canary_service=%s stable_service=%s",
         request.app_info.name,
         request.app_info.namespace,
-        reported_weight,
+        incoming_weight,
         request.app_info.canary_service,
         request.app_info.stable_service,
     )
@@ -368,10 +378,10 @@ async def predict(request: InferenceRequest):
     if not data_complete:
         latency_ms = (time.perf_counter() - started_at) * 1000.0
         logger.warning(
-            "predict_insufficient_metrics app=%s ns=%s reported_weight=%.2f observed_weight=%.2f decision=Running latency_ms=%.1f",
+            "predict_insufficient_metrics app=%s ns=%s incoming_weight=%.2f observed_weight=%.2f decision=Running latency_ms=%.1f",
             request.app_info.name,
             request.app_info.namespace,
-            reported_weight,
+            incoming_weight,
             observed_weight,
             latency_ms,
         )
@@ -414,12 +424,12 @@ async def predict(request: InferenceRequest):
 
     logger.info(
         (
-            "predict app=%s ns=%s reported_weight=%.2f observed_weight=%.2f action=%d "
+            "predict app=%s ns=%s incoming_weight=%.2f observed_weight=%.2f action=%d "
             "signal=%s suggested_weight=%.2f decision=%s confidence=%.4f latency_ms=%.1f"
         ),
         request.app_info.name,
         request.app_info.namespace,
-        reported_weight,
+        incoming_weight,
         observed_weight,
         action,
         traffic_signal,

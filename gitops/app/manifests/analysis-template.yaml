@@ -6,7 +6,6 @@ metadata:
 spec:
   args:
   - name: rollout-name
-  - name: current-weight
   metrics:
   - name: ai-judgment
     interval: 30s # Tần suất truy vấn AI Agent
@@ -24,7 +23,6 @@ spec:
         jsonBody:
           app_info:
             name: "{{args.rollout-name}}"
-            weight: "{{args.current-weight}}"
             namespace: "default"
             canary_service: "my-app-canary"
             stable_service: "my-app-stable"
