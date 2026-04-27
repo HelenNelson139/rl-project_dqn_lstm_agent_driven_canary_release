@@ -48,10 +48,6 @@ spec:
         args:
         - name: rollout-name
           value: "my-app-v2"
-        - name: current-weight
-          valueFrom:
-            fieldRef:
-              fieldPath: status.canary.weights.canary.weight
       
       # Lộ trình tăng traffic
       steps:
