@@ -19,10 +19,12 @@ spec:
         - name: my-app
           image: ghcr.io/thuanthentran/dqn-lstm-agent-driven-canary-release/my-app:latest
           env:
+            - name: SAFETY_GUARD_ENABLED
+              value: "false"  # <--- Tắt lớp giáp bảo vệ tại đây
             - name: APP_SCENARIO
               value: "latency_leak"
             - name: APP_VERSION
-              value: "v2.0.0"
+              value: "v2.0.1"
           ports:
             - name: http
               containerPort: 8080
