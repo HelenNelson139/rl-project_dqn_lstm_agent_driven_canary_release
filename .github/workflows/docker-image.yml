@@ -43,8 +43,8 @@ jobs:
           # Image path mới dạng: ghcr.io/username-của-bạn/canary-ai-service
           # Lưu ý: github.repository đã bao gồm username/repo-name
           tags: |
-            ghcr.io/${{ github.repository }}/canary-ai-service:latest
-            ghcr.io/${{ github.repository }}/canary-ai-service:${{ steps.vars.outputs.sha_short }}
+            ghcr.io/helennelson139/rl-project_dqn_lstm_agent_driven_canary_release/canary-ai-service:latest
+            ghcr.io/helennelson139/rl-project_dqn_lstm_agent_driven_canary_release/canary-ai-service:${{ steps.vars.outputs.sha_short }}
 
       - name: Build and push my-app
         uses: docker/build-push-action@v5
@@ -53,5 +53,5 @@ jobs:
           file: my-app/Dockerfile
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/my-app:latest
-            ghcr.io/${{ github.repository }}/my-app:${{ steps.vars.outputs.sha_short }}
+            ghcr.io/helennelson139/rl-project_dqn_lstm_agent_driven_canary_release/my-app:latest
+            ghcr.io/helennelson139/rl-project_dqn_lstm_agent_driven_canary_release/my-app:${{ steps.vars.outputs.sha_short }}
