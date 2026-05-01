@@ -17,7 +17,7 @@ spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: my-app
-          image: ghcr.io/helennelson139/rl-project_dqn_lstm_agent_driven_canary_release/my-app:latest
+          image: ghcr.io/helennelson139/rl-project_dqn_lstm_agent_driven_canary_release/my-app:c41baa1
           env:
             - name: APP_SCENARIO
               value: "cascading_failure"
