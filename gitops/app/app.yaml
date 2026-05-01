@@ -8,7 +8,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/thuanthentran/dqn-lstm-agent-driven-canary-release.git
+    repoURL: https://github.com/HelenNelson139/rl-project_dqn_lstm_agent_driven_canary_release.git
     targetRevision: main
     path: gitops/app/manifests
   destination:
