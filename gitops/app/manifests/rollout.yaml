@@ -20,9 +20,9 @@ spec:
           image: ghcr.io/helennelson139/rl-project_dqn_lstm_agent_driven_canary_release/my-app:c41baa1
           env:
             - name: APP_SCENARIO
-              value: "cascading_failure"
+              value: "normal"
             - name: APP_VERSION
-              value: "v4.0.0"
+              value: "v4.0.1"
           ports:
             - name: http
               containerPort: 8080
