@@ -191,7 +191,7 @@ def _action_to_traffic_signal(action: int, current_weight: float):
     if action == 0: return "increase-fast", min(100.0, current_weight + 10.0)
     if action == 1: return "increase-slow", min(100.0, current_weight + 5.0)
     if action == 2: return "hold", current_weight
-    if action == 3: return "rollback", max(0.0, current_weight - 5.0)
+    if action == 3: return "rollback", 0.0
     if action == 4: return "rollback", 0.0
     return "hold", current_weight
 
@@ -260,7 +260,7 @@ async def predict(request: InferenceRequest):
     q_values_list = [round(float(v), 2) for v in q_values.squeeze(0).tolist()]
     confidence = float(torch.softmax(q_values, dim=1).max())
     
-    action_mapping = {0: "Successful", 1: "Successful", 2: "Running", 3: "Running", 4: "Rollback"}
+    action_mapping = {0: "Successful", 1: "Successful", 2: "Running", 3: "Rollback", 4: "Rollback"}
     model_decision = action_mapping.get(action, "Running")
     
     logger.info("model_inference app=%s q_values=%s chosen_action=%d model_decision=%s confidence=%.3f", app_name, q_values_list, action, model_decision, confidence)
