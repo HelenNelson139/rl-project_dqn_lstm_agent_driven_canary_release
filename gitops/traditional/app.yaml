@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: traditional-canary-app
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/HelenNelson139/rl-project_dqn_lstm_agent_driven_canary_release.git
+    targetRevision: main
+    path: gitops/traditional/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
