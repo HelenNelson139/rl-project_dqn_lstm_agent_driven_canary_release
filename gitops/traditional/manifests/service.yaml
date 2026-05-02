@@ -1,0 +1,27 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: traditional-my-app-stable
+  labels:
+    app: traditional-my-app
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  selector:
+    app: traditional-my-app
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: traditional-my-app-canary
+  labels:
+    app: traditional-my-app
+spec:
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+  selector:
+    app: traditional-my-app

@@ -1,0 +1,15 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: traditional-my-app-metrics
+  labels:
+    release: kube-prometheus-stack
+    app: traditional-my-app
+spec:
+  selector:
+    matchLabels:
+      app: traditional-my-app
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
