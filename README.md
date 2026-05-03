@@ -4,5 +4,5 @@ A small project conducting Canary release on k8s cluster, driven by DQN_LSTM Age
 ## System Workflow Overview
 ![DQN-LSTM Agent Driven Canary Release Workflow](docs/images/dqn-lstm-canary-release-flow.png)
 ## System Architecture Overview
-![System Architecture Overview](docs/image/tongquanhatang.png)
+![System Architecture Overview](docs/images/tongquanhatang.png)
 
